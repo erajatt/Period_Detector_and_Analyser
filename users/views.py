@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework.exceptions import AuthenticationFailed
 from .serializers import UserSerializer, PeriodDetailSerializer
 from .models import User, PeriodDetail
-import jwt, datetime
+import jwt
+import datetime
 from django.http import HttpResponse
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,18 +16,21 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Image
 from reportlab.lib.styles import getSampleStyleSheet
 import io
+import os
 
+secret_token = os.environ.get('SECRET_TOKEN', 'Secret75432')
 
 # Create your views here.
+
+# API view for user registration
 class Register(APIView):
     def post(self, request):
-        print(request)
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
-
+# API view for user login
 class Login(APIView):
     def post(self, request):
         email = request.data['email']
@@ -46,19 +50,19 @@ class Login(APIView):
             'iat': datetime.datetime.utcnow()
         }
 
-        token = jwt.encode(payload, 'secret', algorithm='HS256')
+        token = jwt.encode(payload, secret_token, algorithm='HS256')
 
         response = Response()
 
+        # Setting JWT token as cookie in the response
         response.set_cookie(key='jwt', value=token, httponly=True, samesite=None)
         response.data = {
             'jwt': token
         }
         return response
 
-
+# API view for viewing user details
 class ViewUser(APIView):
-
     def get(self, request):
         token = request.COOKIES.get('jwt')
 
@@ -66,7 +70,7 @@ class ViewUser(APIView):
             raise AuthenticationFailed('Unauthenticated!')
 
         try:
-            payload = jwt.decode(token, 'secret', algorithms=['HS256'])
+            payload = jwt.decode(token, secret_token, algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed('Unauthenticated!')
 
@@ -74,7 +78,7 @@ class ViewUser(APIView):
         serializer = UserSerializer(user)
         return Response(serializer.data)
 
-
+# API view for user logout
 class Logout(APIView):
     def post(self, request):
         response = Response()
@@ -84,17 +88,15 @@ class Logout(APIView):
         }
         return response
 
+# API view for creating a period detail
 class CreatePeriodDetail(APIView):
     def post(self, request):
-        print(request)
         token = request.COOKIES.get('jwt')
         if not token:
             raise AuthenticationFailed('Unauthenticated!')
-        print("error loc 1")
 
         try:
-            payload = jwt.decode(token, 'secret', algorithms=['HS256'])
-        
+            payload = jwt.decode(token, secret_token, algorithms=['HS256'])
             user_id = payload.get('id')
 
             data = {
@@ -103,7 +105,7 @@ class CreatePeriodDetail(APIView):
                 'end_date': request.data.get('end_date'),
                 'symptoms': request.data.get('symptoms')
             }
-            print("error log 2")
+
             # Serialize the data
             serializer = PeriodDetailSerializer(data=data)
 
@@ -112,35 +114,28 @@ class CreatePeriodDetail(APIView):
 
             # Save the period detail
             serializer.save()
-            print("error loc 3")
             return Response(serializer.data)
         
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed('Unauthenticated!')
         except jwt.InvalidTokenError:
             raise AuthenticationFailed('Invalid token!')
-        
+
+# API view for retrieving period data
 class RetrievePeriodsData(APIView):
     def post(self, request):
-        # Retrieve the JWT token from the request
-        token = request.token
+        token = request.COOKIES.get('jwt')
 
-        # Check if the token is provided
         if not token:
             raise AuthenticationFailed('Unauthenticated!')
 
         try:
-            # Decode the JWT token
-            payload = jwt.decode(token, 'secret', algorithms=['HS256'])
-            
-            # Retrieve the user based on the user ID in the payload
+            payload = jwt.decode(token, secret_token, algorithms=['HS256'])
             user_id = payload.get('id')
 
-            # Retrieve start and end date range from request data
             start_date = request.data.get('start_date')
             end_date = request.data.get('end_date')
 
-            # Query period details based on user and date range
             if start_date and end_date:
                 periods = PeriodDetail.objects.filter(user_id=user_id, start_date__range=[start_date, end_date]).order_by('-start_date')
             else:
@@ -155,24 +150,18 @@ class RetrievePeriodsData(APIView):
         except jwt.InvalidTokenError:
             raise AuthenticationFailed('Invalid token!')
 
-
+# API view for predicting next period
 class PredictNextPeriod(APIView):
     def get(self, request):
-        # Retrieve the JWT token from the request
         token = request.COOKIES.get('jwt')
 
-        # Check if the token is provided
         if not token:
             raise AuthenticationFailed('Unauthenticated!')
 
         try:
-            # Decode the JWT token
-            payload = jwt.decode(token, 'secret', algorithms=['HS256'])
-            
-            # Retrieve the user based on the user ID in the payload
+            payload = jwt.decode(token, secret_token, algorithms=['HS256'])
             user_id = payload.get('id')
 
-            # Retrieve previous start dates of the user's periods
             previous_periods = PeriodDetail.objects.filter(user=user_id).order_by('-start_date')
 
             if not previous_periods:
@@ -198,7 +187,7 @@ class PredictNextPeriod(APIView):
         except jwt.InvalidTokenError:
             raise AuthenticationFailed('Invalid token!')
 
-
+# API view for analyzing symptoms
 class AnalyzeSymptoms(APIView):
     def get(self, request):
         token = request.COOKIES.get('jwt')
@@ -207,7 +196,7 @@ class AnalyzeSymptoms(APIView):
             raise AuthenticationFailed('Unauthenticated!')
             
         try:
-            payload = jwt.decode(token, 'secret', algorithms=['HS256'])
+            payload = jwt.decode(token, secret_token, algorithms=['HS256'])
             user_id = payload.get('id')
 
             previous_periods = PeriodDetail.objects.filter(user=user_id).order_by('-start_date')
@@ -217,11 +206,10 @@ class AnalyzeSymptoms(APIView):
             
             symptoms_data = [period.symptoms.split(',') for period in previous_periods if period.symptoms]
             
-            # Flatten the list of symptoms and create a frequency count
             symptoms_flat = [symptom.strip() for sublist in symptoms_data for symptom in sublist]
             symptom_counts = Counter(symptoms_flat)
-            
-            # Generate a bar plot of symptom frequencies
+
+            # Plotting symptom frequencies
             plt.figure(figsize=(10, 6))
             sns.barplot(x=list(symptom_counts.keys()), y=list(symptom_counts.values()))
             plt.xlabel('Symptom')
@@ -230,7 +218,6 @@ class AnalyzeSymptoms(APIView):
             plt.xticks(rotation=45)
             plt.tight_layout()
             
-            # Convert the plot to a PNG image
             bar_buffer = io.BytesIO()
             plt.savefig(bar_buffer, format='png')
             bar_buffer.seek(0)
@@ -238,7 +225,7 @@ class AnalyzeSymptoms(APIView):
             
             symptoms_df = pd.DataFrame(symptoms_data)
             
-            # Generate a heatmap of symptom frequencies
+            # Generating symptom heatmap
             plt.figure(figsize=(10, 6))
             sns.heatmap(symptoms_df.apply(pd.Series.value_counts), annot=True, cmap='coolwarm', fmt='g')
             plt.xlabel('Symptom')
@@ -246,38 +233,33 @@ class AnalyzeSymptoms(APIView):
             plt.title('Symptom Heatmap')
             plt.tight_layout()
             
-            # Convert the plot to a PNG image
             heatmap_buffer = io.BytesIO()
             plt.savefig(heatmap_buffer, format='png')
             heatmap_buffer.seek(0)
             plt.close()
 
-            # Create a PDF document
+            # Generating PDF report
             pdf_buffer = io.BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
             styles = getSampleStyleSheet()
             story = []
 
-            # Add title
             story.append(Paragraph("Symptom Analysis Report", styles['Title']))
 
-            # Add bar plot as an image to the PDF
             bar_img = Image(bar_buffer)
             bar_img.drawHeight = 300
             bar_img.drawWidth = 500
             story.append(bar_img)
-            
-            # Add heatmap as an image to the PDF
+
             heatmap_img = Image(heatmap_buffer)
             heatmap_img.drawHeight = 300
             heatmap_img.drawWidth = 500
             story.append(heatmap_img)
 
-            # Build the PDF document
             doc.build(story)
             pdf_buffer.seek(0)
             
-            # Create and return the HTTP response with the PDF content
+            # Returning PDF response
             response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
             response['Content-Disposition'] = 'inline; filename=symptom_analysis.pdf'
             bar_buffer.close()
