@@ -6,6 +6,7 @@ from .models import User, PeriodDetail
 import jwt
 import datetime
 from django.http import HttpResponse
+from django.shortcuts import render
 import pandas as pd
 import matplotlib.pyplot as plt
 import tkinter as tk
@@ -21,6 +22,21 @@ import os
 secret_token = os.environ.get('SECRET_TOKEN', 'Secret75432')
 
 # Create your views here.
+
+def index(request):
+    token = request.COOKIES.get('jwt')
+
+    if not token:
+        raise AuthenticationFailed('Unauthenticated!')
+
+    try:
+        payload = jwt.decode(token, secret_token, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationFailed('Unauthenticated!')
+
+    user = User.objects.filter(id=payload['id']).first()
+    periods=PeriodDetail.objects.filter(user=user)
+    return render(request, 'users/index.html', {'periods':periods})
 
 # API view for user registration
 class Register(APIView):
@@ -276,3 +292,5 @@ class AnalyzeSymptoms(APIView):
             raise AuthenticationFailed('Unauthenticated!')
         except jwt.InvalidTokenError:
             raise AuthenticationFailed('Invalid token!')
+        
+
