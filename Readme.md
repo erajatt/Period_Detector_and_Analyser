@@ -6,7 +6,7 @@ This is a web application for tracking menstrual periods. Users can register, lo
 - Period Tracking: Users can record the start and end dates of their menstrual periods, as well as any associated symptoms.
 - Period History: Users can view their past periods and associated details.
 - Period Prediction: The application can predict the start date of the next period based on past data.
-- Symptom Analysis: Users can analyze the frequency of symptoms experienced during their periods using visualizations.
+- Symptom Analysis: Users can analyze the frequency of symptoms experienced during their periods using visualizations. A pdf will be downloaded showing frequency of different symptoms, and also a heatmap showing correlation between different symptoms.
   
 ## Technologies Used:
 - Backend: Django REST Framework, Python
